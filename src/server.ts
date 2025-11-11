@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser"
 import bcypt from "bcrypt"
 import { users, type User } from "./users.js"
 import jwt from "jsonwebtoken"
+import { authenticate } from "./middleware/auth.js"
 
 dotenv.config()
 
@@ -12,6 +13,42 @@ const port = process.env.PORT || 3000
 
 app.use(express.json());
 app.use(cookieParser());
+
+app.post('/signup', async (req: Request, res: Response) => {
+    try {
+        const { name, email, password } = req.body
+
+        // validate
+        if (!name || !email || !password) {
+            return res.status(400).json({ message: "All the fields are required" })
+        }
+
+        // look for an existing user
+        const existingUser = users.find((user) => { user.email == email })
+
+        if (existingUser) {
+            return res.status(400).json({ message: "User already exists" })
+        }
+
+        // saltrounds shows how many times the hash is internally processed
+        const saltRound = 10;
+        const hashedPassword = await bcypt.hash(password, saltRound)
+
+        // create an object for a new user
+        const newUser: User = {
+            id: users.length + 1,
+            name,
+            email,
+            hashedPassword,
+        }
+
+        // push the new user to the in-memory demo database
+        users.push(newUser)
+        return res.status(201).json({ message: "User registered successfully", userId: newUser.id })
+    } catch (error) {
+        return res.status(500).json({ message: "Error while registering user!!" })
+    }
+})
 
 app.post('/login', async (req: Request, res: Response) => {
     const { email, password } = req.body
@@ -56,42 +93,6 @@ app.post('/login', async (req: Request, res: Response) => {
     })
 })
 
-app.post('/signup', async (req: Request, res: Response) => {
-    try {
-        const { name, email, password } = req.body
-
-        // validate
-        if (!name || !email || !password) {
-            return res.status(400).json({ message: "All the fields are required" })
-        }
-
-        // look for an existing user
-        const existingUser = users.find((user) => { user.email == email })
-
-        if (existingUser) {
-            return res.status(400).json({ message: "User already exists" })
-        }
-
-        // saltrounds shows how many times the hash is internally processed
-        const saltRound = 10;
-        const hashedPassword = await bcypt.hash(password, saltRound)
-
-        // create an object for a new user
-        const newUser: User = {
-            id: users.length + 1,
-            name,
-            email,
-            hashedPassword,
-        }
-
-        // push the new user to the in-memory demo database
-        users.push(newUser)
-        return res.status(201).json({ message: "User registered successfully", userId: newUser.id })
-    } catch (error) {
-        return res.status(500).json({ message: "Error while registering user!!" })
-    }
-})
-
 app.get('/users', (req: Request, res: Response) => {
     return res.status(200).json({ users })
 })
@@ -112,12 +113,12 @@ app.get('/users/:id', (req: Request, res: Response) => {
     }
 })
 
-function verifyToken(){
-
-}
-
-app.get('/dashboard', verifyToken, (req: Request, res: Response) => {
-
+app.get('/dashboard', authenticate, (req: Request, res: Response) => {
+    // req.user is available and typed (refer to the types.d.ts)
+    const user = req.user
+    return res.status(200).json({
+        message: `Welcome to the dashboard,  ${user?.email}`
+    })
 })
 
 app.get('/', (req: Request, res: Response) => {
