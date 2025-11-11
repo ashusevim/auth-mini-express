@@ -3,6 +3,8 @@ import dotenv from "dotenv"
 import cookieParser from "cookie-parser"
 import bcypt from "bcrypt"
 import { users, type User } from "./users.js"
+import jwt from "jsonwebtoken"
+
 dotenv.config()
 
 const app = express()
@@ -11,14 +13,60 @@ const port = process.env.PORT || 3000
 app.use(express.json());
 app.use(cookieParser());
 
+app.post('/login', async (req: Request, res: Response) => {
+    const { email, password } = req.body
+
+    // validate input
+    if (!email || !password) {
+        return res.status(400).json({
+            message: "Email and password are required"
+        })
+    }
+
+    // find user
+    const user = users.find((user) => user.email === email);
+    if (!user) {
+        return res.status(404).json({
+            message: "User not found!!"
+        })
+    }
+
+    // compare password
+    const compare_password = await bcypt.compare(password, user.hashedPassword)
+    if (!compare_password) {
+        return res.status(401).json({
+            message: "Invalid credentials"
+        })
+    }
+
+    const jwt_secret = process.env.JWT_SECRET;
+    if (!jwt_secret) {
+        return res.status(401).json({
+            message: "JWT_SECRET is not provided"
+        })
+    }
+
+    // generate JWT
+    const token = jwt.sign({ id: user.id, email: user.email }, jwt_secret, { expiresIn: "15m" })
+
+    //send response
+    return res.status(200).json({
+        message: "Login successful",
+        token: token
+    })
+
+})
+
 app.post('/signup', async (req: Request, res: Response) => {
     try {
         const { name, email, password } = req.body
 
+        // validate
         if (!name || !email || !password) {
             return res.status(400).json({ message: "All the fields are required" })
         }
 
+        // look for an existing user
         const existingUser = users.find((user) => { user.email == email })
 
         if (existingUser) {
@@ -29,6 +77,7 @@ app.post('/signup', async (req: Request, res: Response) => {
         const saltRound = 10;
         const hashedPassword = await bcypt.hash(password, saltRound)
 
+        // create an object for a new user
         const newUser: User = {
             id: users.length + 1,
             name,
@@ -36,6 +85,7 @@ app.post('/signup', async (req: Request, res: Response) => {
             hashedPassword,
         }
 
+        // push the new user to the in-memory demo database
         users.push(newUser)
         return res.status(201).json({ message: "User registered successfully", userId: newUser.id })
     } catch (error) {
@@ -50,14 +100,16 @@ app.get('/users', (req: Request, res: Response) => {
 app.get('/users/:id', (req: Request, res: Response) => {
     try {
         const { id } = req.body;
-        if(!id){
+        if (!id) {
             return res.status(400).json({ message: "All the fields are required" })
         }
 
         const user = users.find((user) => user.id == id)
         return res.status(200).json({ user })
     } catch (error) {
-        
+        return res.status(500).json({
+            message: "Failed to find the user with the given ID"
+        })
     }
 })
 
