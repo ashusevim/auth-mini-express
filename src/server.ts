@@ -5,11 +5,13 @@ import bcypt from "bcrypt";
 import { users, type User } from "./users.js";
 import jwt from "jsonwebtoken";
 import { authenticate } from "./middleware/auth.js";
+import { emit } from "node:process";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+const jwt_secret = process.env.JWT_SECRET;
 
 app.use(express.json());
 app.use(cookieParser());
@@ -26,9 +28,7 @@ app.post("/signup", async (req: Request, res: Response) => {
 		}
 
 		// look for an existing user
-		const existingUser = users.find((user) => {
-			user.email == email;
-		});
+		const existingUser = users.find(user => user.email === email);
 
 		if (existingUser) {
 			return res.status(400).json({ message: "User already exists" });
@@ -44,7 +44,7 @@ app.post("/signup", async (req: Request, res: Response) => {
 			name,
 			email,
 			hashedPassword,
-			refreshToken
+			refreshToken,
 		};
 
 		// push the new user to the in-memory demo database
@@ -71,7 +71,7 @@ app.post("/login", async (req: Request, res: Response) => {
 	}
 
 	// find user
-	const user = users.find((user) => user.email === email);
+	const user = users.find(user => user.email === email);
 	if (!user) {
 		return res.status(404).json({
 			message: "User not found!!",
@@ -86,22 +86,19 @@ app.post("/login", async (req: Request, res: Response) => {
 		});
 	}
 
-	const jwt_secret = process.env.JWT_SECRET;
-	if (!jwt_secret) {
-		return res.status(401).json({
-			message: "JWT_SECRET is not provided",
-		});
-	}
-
 	// Generate access token (JWT)
-	const token = jwt.sign({ id: user.id, email: user.email }, jwt_secret, {
-		expiresIn: "15m",
-	});
+	const token = jwt.sign(
+		{ id: user.id, email: user.email },
+		jwt_secret as string,
+		{
+			expiresIn: "15m",
+		},
+	);
 
 	// Generate a refresh token (long lived)
 	const refreshToken = jwt.sign(
 		{ id: user.id, email: user.email },
-		jwt_secret,
+		jwt_secret as string,
 		{
 			expiresIn: "7d",
 		},
@@ -117,6 +114,54 @@ app.post("/login", async (req: Request, res: Response) => {
 	});
 });
 
+app.get("/logout", (req: Request, res: Response) => {
+	const { refreshToken } = req.body;
+	const user = users.find(user => user.refreshToken === refreshToken);
+	if (user) user.refreshToken = "";
+	return res.status(200).json({
+		message: "Logged out successfully",
+	});
+});
+
+app.get("/refresh", async (req: Request, res: Response) => {
+	const { refreshToken } = req.body;
+
+	if (!refreshToken) {
+		return res.status(400).json({
+			message: "Refresh token is required",
+		});
+	}
+
+	// find the user who owns the refreshToken
+	const user = users.find(user => user.refreshToken === refreshToken);
+	if (!user) {
+		return res.status(403).json({
+			message: "Invalid refresh token",
+		});
+	}
+
+	try {
+		jwt.verify(refreshToken, jwt_secret as string);
+
+		const newAccessToken = jwt.sign(
+			{ id: user.id, email: user.email },
+			jwt_secret as string,
+			{
+				expiresIn: "15m",
+			},
+		);
+
+		return res.status(200).json({
+			message: "Token refreshed successfully",
+			token: newAccessToken,
+		});
+	} catch (Error) {
+		return res.status(403).json({
+			message: "Expired or invalid refresh tokens",
+		});
+	}
+});
+
 app.get("/users", (req: Request, res: Response) => {
 	return res.status(200).json({ users });
 });
@@ -130,7 +175,7 @@ app.get("/users/:id", (req: Request, res: Response) => {
 				.json({ message: "All the fields are required" });
 		}
 
-		const user = users.find((user) => user.id == id);
+		const user = users.find(user => user.id == id);
 		return res.status(200).json({ user });
 	} catch (error) {
 		return res.status(500).json({
