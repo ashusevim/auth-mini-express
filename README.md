@@ -1,6 +1,6 @@
-## JWT based authentication service/middleware implementation using express and node 
-## Tech stack we are using
+Implementation of JWT based authentication service/middleware using express.js and nodejs 
 
+### Tech stack we are using
 - **express** - HTTP server
 - **bcrypt** - password hashing
 - **jsonwebtoken** - sign/verify JWTs
