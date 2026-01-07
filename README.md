@@ -1,5 +1,4 @@
-# Auth Mini Project (Learning Project)
-
+## JWT based authentication service/middleware implementation using express and node 
 ## Tech stack we are using
 
 - **express** - HTTP server
